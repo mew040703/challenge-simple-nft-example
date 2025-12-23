@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🏗 Scaffold-ETH 2
 
 <h4 align="center">
@@ -248,3 +249,7 @@ To know more about its features, check out our [website](https://scaffoldeth.io)
 We welcome contributions to Scaffold-ETH 2!
 
 Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
+=======
+# nft
+Final project for blockchain course: NFT smart contract and frontend
+>>>>>>> ec1565f91c692e051fa8257e41cbbc67fac0e80e
