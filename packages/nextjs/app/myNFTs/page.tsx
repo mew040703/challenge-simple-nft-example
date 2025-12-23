@@ -1,6 +1,14 @@
 "use client";
 
-import { MyHoldings } from "./_components";
+import {
+  AirdropMinter,
+  BatchNFTMinter,
+  CustomNFTMinter,
+  ExcelBatchMinter,
+  MyHoldings,
+  MyListings,
+} from "./_components";
+
 import type { NextPage } from "next";
 import { useAccount } from "wagmi";
 import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
@@ -33,9 +41,25 @@ const MyNFTs: NextPage = () => {
       // First remove previous loading notification and then show success notification
       notification.remove(notificationId);
       notification.success("Metadata uploaded to IPFS");
+      
+        try {
+        await fetch("/api/db/save-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress: connectedAddress,
+            metadataHash: uploadedItem.path,
+            imageUrl: currentTokenMetaData.image,
+          }),
+        });
+      } catch (e) {
+        console.error("Save preset image to DB failed", e);
+      }
+
 
       await writeContractAsync({
         functionName: "mintItem",
+        
         args: [connectedAddress, uploadedItem.path],
       });
     } catch (error) {
@@ -52,17 +76,44 @@ const MyNFTs: NextPage = () => {
             <span className="block text-4xl font-bold">My NFTs</span>
           </h1>
         </div>
-      </div>
-      <div className="flex justify-center">
-        {!isConnected || isConnecting ? (
+                                                                                                                                                                                                                                                                                         </div>
+      
+      {!isConnected || isConnecting ? (
+        <div className="flex justify-center">
           <RainbowKitCustomConnectButton />
-        ) : (
-          <button className="btn btn-secondary" onClick={handleMintItem}>
-            Mint NFT
-          </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 justify-center items-start px-5 mb-8">
+          {/* Original Mint NFT */}
+          <div className="card bg-base-100 shadow-xl w-full max-w-md mx-auto">
+            <div className="card-body">
+              <h2 className="card-title text-center">Mint Preset NFT</h2>
+              <p className="text-center text-sm opacity-70 mb-4">
+                Mint from predefined collection
+              </p>
+              <button className="btn btn-secondary" onClick={handleMintItem}>
+                Mint NFT
+              </button>
+            </div>
+          </div>
+          
+          {/* Custom NFT Minter */}
+          <CustomNFTMinter />
+          
+          {/* Batch NFT Minter */}
+          <BatchNFTMinter />
+          
+          {/* Excel Batch Minter */}
+          <ExcelBatchMinter />
+
+          {/* Airdrop NFTs */}
+          <AirdropMinter />
+        </div>
+      )}
+      
       <MyHoldings />
+                              <MyListings />
+
     </>
   );
 };
