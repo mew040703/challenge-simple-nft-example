@@ -2,11 +2,15 @@
 
 import { NextRequest } from "next/server";
 
-const PINATA_API_KEY = process.env.PINATA_API_KEY || "0832c8cf3517b1ff615b";
-const PINATA_SECRET_API_KEY = process.env.PINATA_SECRET_API_KEY || "31f63c97a34e859a4eb9bc0b3aeaa37790db770d7abf1dbf5bd443e7e02fc573";
+const PINATA_API_KEY = process.env.PINATA_API_KEY || "";
+const PINATA_SECRET_API_KEY = process.env.PINATA_SECRET_API_KEY || "";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!PINATA_API_KEY || !PINATA_SECRET_API_KEY) {
+      return Response.json({ error: "Missing Pinata credentials" }, { status: 500 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
     
