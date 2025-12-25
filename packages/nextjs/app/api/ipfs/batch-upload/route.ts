@@ -4,6 +4,50 @@ const PINATA_API_KEY = process.env.PINATA_API_KEY || "";
 const PINATA_SECRET_API_KEY = process.env.PINATA_SECRET_API_KEY || "";
 const PUBLIC_IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 
+const parseCsvLine = (line: string) => {
+  const out: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (c === "," && !inQuotes) {
+      out.push(current);
+      current = "";
+      continue;
+    }
+    current += c;
+  }
+  out.push(current);
+  return out.map(v => v.trim());
+};
+
+const normalizeHeader = (h: string) =>
+  h
+    .replace(/^\uFEFF/, "")
+    .replace(/"/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "_");
+
+const normalizeImageKey = (s: string) => {
+  const trimmed = String(s || "").trim();
+  if (!trimmed) return "";
+  const base = trimmed.split("/").pop()?.split("\\").pop() || trimmed;
+  return base.trim();
+};
+
+const stripExtension = (filename: string) => filename.replace(/\.[^/.]+$/, "");
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -18,20 +62,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "至少需要上传一张图片" });
     }
 
+    if (!PINATA_API_KEY || !PINATA_SECRET_API_KEY) {
+      return NextResponse.json({ success: false, error: "缺少 Pinata 配置（PINATA_API_KEY / PINATA_SECRET_API_KEY）" });
+    }
+
     // 解析CSV文件
     const csvText = await csvFile.text();
-    const lines = csvText.split('\n');
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+    const rawHeaders = parseCsvLine(lines[0]);
+    const headers = rawHeaders.map(normalizeHeader);
     
     const nftData = [];
     for (let i = 1; i < lines.length; i++) {
       if (lines[i].trim()) {
-        const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim());
+        const values = parseCsvLine(lines[i]);
         const nft: any = {};
         headers.forEach((header, index) => {
-          nft[header] = values[index] || '';
+          nft[header] = values[index] || "";
         });
-        nftData.push(nft);
+        nftData.push({ __row: i + 1, ...nft });
       }
     }
 
@@ -73,16 +122,41 @@ export async function POST(request: NextRequest) {
 
       const pinataResult = await pinataResponse.json();
       const imageUrl = `${PUBLIC_IPFS_GATEWAY}${pinataResult.IpfsHash}`;
-      uploadedImages[imageFile.name] = imageUrl;
+      const key = normalizeImageKey(imageFile.name);
+      uploadedImages[key] = imageUrl;
+      uploadedImages[key.toLowerCase()] = imageUrl;
+      uploadedImages[stripExtension(key).toLowerCase()] = imageUrl;
     }
 
     // 为每个NFT创建元数据并上传到IPFS
     const metadataResults = [];
+    const skipped: Array<{ row: number; reason: string; image_file?: string; name?: string }> = [];
     
     for (const nft of nftData) {
-      const imageUrl = uploadedImages[nft.image_file];
+      const nftName = (nft.name || nft.nft_name || nft.title || "").trim();
+      const imageFileValue = normalizeImageKey(nft.image_file || nft.image || nft.imagefile || nft.image_name || "");
+      const imageKeyCandidates = [
+        imageFileValue,
+        imageFileValue.toLowerCase(),
+        stripExtension(imageFileValue).toLowerCase(),
+      ].filter(Boolean);
+      const imageUrl = imageKeyCandidates.map(k => uploadedImages[k]).find(Boolean);
       if (!imageUrl) {
-        console.warn(`Image file ${nft.image_file} not found for NFT ${nft.name}`);
+        skipped.push({
+          row: Number(nft.__row) || -1,
+          reason: "图片文件名未匹配到已上传图片",
+          image_file: String(nft.image_file ?? ""),
+          name: String(nft.name ?? ""),
+        });
+        continue;
+      }
+      if (!nftName) {
+        skipped.push({
+          row: Number(nft.__row) || -1,
+          reason: "缺少 name 字段",
+          image_file: String(nft.image_file ?? ""),
+          name: String(nft.name ?? ""),
+        });
         continue;
       }
 
@@ -110,8 +184,8 @@ export async function POST(request: NextRequest) {
       });
 
       const metadata = {
-        name: nft.name,
-        description: nft.description || `Custom NFT: ${nft.name}`,
+        name: nftName,
+        description: (nft.description || nft.desc || "").trim() || `Custom NFT: ${nftName}`,
         image: imageUrl,
         attributes: attributes
       };
@@ -127,7 +201,7 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           pinataContent: metadata,
           pinataMetadata: {
-            name: `${nft.name}-metadata.json`,
+            name: `${nftName}-metadata.json`,
           },
         }),
       });
@@ -140,7 +214,7 @@ export async function POST(request: NextRequest) {
 
       const metadataResult = await metadataResponse.json();
       metadataResults.push({
-        name: nft.name,
+        name: nftName,
         metadataHash: metadataResult.IpfsHash,
         imageUrl: imageUrl
       });
@@ -149,7 +223,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `成功处理 ${metadataResults.length} 个NFT`,
-      results: metadataResults
+      results: metadataResults,
+      skipped
     });
 
   } catch (error) {
