@@ -1,19 +1,26 @@
 import { Agent, fetch as undiciFetch } from "undici";
 import dns from "node:dns";
-// Pinata API configuration
-const PINATA_API_KEY ="0832c8cf3517b1ff615b";
-const PINATA_SECRET_API_KEY ="31f63c97a34e859a4eb9bc0b3aeaa37790db770d7abf1dbf5bd443e7e02fc573";
+
+const getPinataCredentials = () => {
+  const apiKey = process.env.PINATA_API_KEY || "";
+  const secretApiKey = process.env.PINATA_SECRET_API_KEY || "";
+  if (!apiKey || !secretApiKey) {
+    throw new Error("Missing PINATA_API_KEY or PINATA_SECRET_API_KEY");
+  }
+  return { apiKey, secretApiKey };
+};
 
 // Pinata API client for uploading to IPFS
 export const ipfsClient = {
   async add(content: string) {
     try {
+      const { apiKey, secretApiKey } = getPinataCredentials();
       const response = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          pinata_api_key: PINATA_API_KEY,
-          pinata_secret_api_key: PINATA_SECRET_API_KEY,
+          pinata_api_key: apiKey,
+          pinata_secret_api_key: secretApiKey,
         },
         body: JSON.stringify({
           pinataContent: JSON.parse(content),
